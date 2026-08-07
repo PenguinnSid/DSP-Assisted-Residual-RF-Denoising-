@@ -10,15 +10,13 @@ Implementation of a DSP pipeline on generated RF Signal Data and removal of Resi
 DSP-Assisted-Residual-RF-Denoising-/
 │
 ├── data/
-├── notebooks/
-├── src/
+│   ├── bpsk/
+│   └── qpsk/
+├── code/
 │   ├── main.py
-│   ├── generate_dataset.py
-│   ├── modulation.py
-│   ├── awgn.py
-│   ├── dsp.py
-│   ├── train.py
-│   └── evaluate.py
+│   ├── clean_generator.py
+│   ├── experimental notebooks/
+│   └── noise.py
 │
 ├── requirements.txt
 ├── README.md
