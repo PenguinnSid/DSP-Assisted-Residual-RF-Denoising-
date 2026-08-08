@@ -67,8 +67,13 @@ def noisy_data(clean_signals, modulation):
 
     snr_values = np.empty((samples,), dtype=np.float32)
 
+    # creates a balanced pool for sampling SNRs to avoid any SNR imbalances
+    # tiles the values till the required number of samples
+    snr_pool = np.tile(disc_SNR_dB,int(np.ceil(samples / len(disc_SNR_dB))))[:samples]
+    np.random.shuffle(snr_pool)
+
     for i in range(samples):
-        snr_db = np.random.choice(disc_SNR_dB)
+        snr_db = snr_pool[i]
         snr_values[i] = snr_db
 
         faded_signal = rayleigh(clean_signals[i])
