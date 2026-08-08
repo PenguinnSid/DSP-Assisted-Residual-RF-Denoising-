@@ -82,8 +82,6 @@ def generate_data(samples = 10000, signal_length = 1024):
 
             for i in range(samples):
                 
-                
-            
                 if modulation == "BPSK":
                     bits = generate_bits(signal_length)
                     symbols = bpsk_mod(bits).astype(np.float32)
