@@ -49,7 +49,7 @@ def qpsk_mod(bits):
     else :
         return None
 
-def generate_data(samples = 10000, signal_length = 1024):
+def generate_data(samples = 10000, signal_length = 1024, split_config = {"train": 10000, "test": 3000, "validation": 2000}):
     """
     Dataset Generation
 
@@ -62,12 +62,6 @@ def generate_data(samples = 10000, signal_length = 1024):
 
         save_dir = f"data/{modulation.lower()}"
         os.makedirs(save_dir, exist_ok=True)
-
-        split_config = {
-            "train": 10000,
-            "test": 5000,
-            "validation": 2000 
-        }
 
         for split, samples in split_config.items():
             save_dir = os.path.join("data",modulation.lower(),split)

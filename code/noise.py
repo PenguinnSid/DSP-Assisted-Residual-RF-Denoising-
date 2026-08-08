@@ -82,17 +82,12 @@ def noisy_data(clean_signals, modulation):
 
     return noisy_signals, snr_values
 
-def generate_noise():
+def generate_noise(split_config = {"train": 10000,"test": 3000,"validation": 2000 }):
     """
     generates the noise for the clean signals and saves them
 
     """
     modulations = ["BPSK", "QPSK"]
-    split_config = {
-        "train": 10000,
-        "test": 5000,
-        "validation": 2000
-        }
     
     for modulation in modulations:
 
