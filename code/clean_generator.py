@@ -49,7 +49,7 @@ def qpsk_mod(bits):
     else :
         return None
 
-def generate_data(samples = 10000, signal_length = 1024, split_config = {"train": 10000, "test": 3000, "validation": 2000}):
+def generate_data(signal_length = 1024, split_config = {"train": 10000, "test": 3000, "validation": 2000}):
     """
     Dataset Generation
 
