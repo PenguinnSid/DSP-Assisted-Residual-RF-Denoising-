@@ -49,14 +49,75 @@ def qpsk_mod(bits):
     else :
         return None
 
-def generate_data(signal_length = 1024, split_config = {"train": 10000, "test": 3000, "validation": 2000}):
+    
+def upsampling(symbols,sps = 8):
+    """ 
+    Upsamples the symbols by insterting 0s between the symbols
+
+    sps = samples per symbol
+
+    required to represent the symbols as waves, with time differing amplitudes
+    useful for filtering and reducing noise further on
+    """
+
+    upsampled_symbols = np.zeros(len(symbols) * sps, dtype=symbols.dtype)
+    upsampled_symbols[::sps] = symbols
+
+    return upsampled_symbols
+
+
+def rrc_filter(beta = 0.35,span = 8,sps = 8):
+    """
+    Generates a root raised cosine filter for pulse shaping
+    beta: roll-off factor
+    sps: samples per symbol (essentially the resolution)
+    span: filter length (symbols)
+
+    """
+    
+    N = span * sps 
+
+    # creates a time vector centered around zero
+    time = np.arange(-N / 2, N / 2 + 1) / sps
+
+    h = np.zeros_like(time)
+
+    # when t=0 
+    h[time == 0] = 1 - beta + (4 * beta / np.pi)
+
+    # when t=±T/(4 * beta)
+    t_special = np.abs(time) == (1 / (4 * beta))
+    h[t_special] = (beta / np.sqrt(2)) * (
+        ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * beta)))) +
+        ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * beta))))
+    )
+
+    # otherwise 
+    general_case = ~t_special & (time != 0)
+    h[general_case] = (
+        (np.sin(np.pi * time[general_case] * (1 - beta)) +
+         4 * beta * time[general_case] *
+         np.cos(np.pi * time[general_case] * (1 + beta))) /
+        (np.pi * time[general_case] *
+         (1 - (4 * beta * time[general_case]) ** 2))
+    )
+
+    # normalize energy to be 1
+    h /= np.sqrt(np.sum(h ** 2))
+
+    return h
+
+
+def generate_data(signal_length = 1024, sps = 8, rrc_beta = 0.35, rrc_span = 8, split_config = {"train": 10000, "test": 3000, "validation": 2000}):
     """
     Dataset Generation
 
-    Twice the number of samples are required for QPSK as compared to BPSK since each symbol in QPSK represents 2 bits
+    Twice the number of bits are required for QPSK as compared to BPSK since each symbol in QPSK represents 2 bits
     
     """
     modulations = ["BPSK", "QPSK"]
+
+    waveform_length = signal_length * sps
     
     for modulation in modulations:
 
@@ -69,10 +130,12 @@ def generate_data(signal_length = 1024, split_config = {"train": 10000, "test": 
             os.makedirs(save_dir, exist_ok=True)
 
             if modulation == "BPSK":
-                clean_signals = np.empty((samples,signal_length), dtype=np.float32)
+                clean_signals = np.empty((samples,waveform_length), dtype=np.float32)
                 
             elif modulation == "QPSK":
-                clean_signals = np.empty((samples, signal_length), dtype=np.complex64)
+                clean_signals = np.empty((samples, waveform_length), dtype=np.complex64)
+
+            rrc = rrc_filter(rrc_beta, rrc_span, sps)
 
             for i in range(samples):
                 
@@ -84,7 +147,11 @@ def generate_data(signal_length = 1024, split_config = {"train": 10000, "test": 
                     bits = generate_bits(signal_length * 2) 
                     symbols = qpsk_mod(bits).astype(np.complex64)
 
-                clean_signals[i] = symbols
+                upsampled = upsampling(symbols, sps)
+
+                waveform = np.convolve(upsampled,rrc,mode="same")
+
+                clean_signals[i] = waveform
             
             save_path = os.path.join(save_dir, f"{split}_clean.npy")
             np.save(save_path, clean_signals)
