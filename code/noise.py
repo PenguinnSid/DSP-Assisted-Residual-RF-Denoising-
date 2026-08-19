@@ -41,7 +41,10 @@ def awgn(signal,snr_db,modulation):
     """
 
     snr_linear = snr_transform(snr_db)
-    
+    signal_power = np.mean(np.abs(signal) ** 2)
+    noise_power = signal_power / snr_linear
+    sigma = np.sqrt(noise_power / 2)
+
     # computes the standard deviation of the guassian dist.
     if modulation == "BPSK":
         sigma = np.sqrt(1 / (2 * snr_linear))
