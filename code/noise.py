@@ -41,7 +41,10 @@ def awgn(signal,snr_db,modulation):
     """
 
     snr_linear = snr_transform(snr_db)
-    
+    signal_power = np.mean(np.abs(signal) ** 2)
+    noise_power = signal_power / snr_linear
+    sigma = np.sqrt(noise_power / 2)
+
     # computes the standard deviation of the guassian dist.
     if modulation == "BPSK":
         sigma = np.sqrt(1 / (2 * snr_linear))
@@ -67,8 +70,13 @@ def noisy_data(clean_signals, modulation):
 
     snr_values = np.empty((samples,), dtype=np.float32)
 
+    # creates a balanced pool for sampling SNRs to avoid any SNR imbalances
+    # tiles the values till the required number of samples
+    snr_pool = np.tile(disc_SNR_dB,int(np.ceil(samples / len(disc_SNR_dB))))[:samples]
+    np.random.shuffle(snr_pool)
+
     for i in range(samples):
-        snr_db = np.random.choice(disc_SNR_dB)
+        snr_db = snr_pool[i]
         snr_values[i] = snr_db
 
         faded_signal = rayleigh(clean_signals[i])
@@ -77,17 +85,12 @@ def noisy_data(clean_signals, modulation):
 
     return noisy_signals, snr_values
 
-def generate_noise():
+def generate_noise(split_config = {"train": 10000,"test": 3000,"validation": 2000 }):
     """
     generates the noise for the clean signals and saves them
 
     """
     modulations = ["BPSK", "QPSK"]
-    split_config = {
-        "train": 10000,
-        "test": 5000,
-        "validation": 2000
-        }
     
     for modulation in modulations:
 
