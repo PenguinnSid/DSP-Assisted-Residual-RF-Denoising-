@@ -1,12 +1,13 @@
 import numpy as np
 from pathlib import Path
 from scipy.signal import firwin, filtfilt
+from matched_filter import matched_filter
 
 
 # DSP PARAMETERS
 
-CUTOFF = 0.45
-NUM_TAPS = 31
+CUTOFF = 0.18
+NUM_TAPS = 101
 
 # DC OFFSET REMOVAL
 def remove_dc_offset(signal):
@@ -19,22 +20,42 @@ def remove_dc_offset(signal):
 
 # LOW-PASS FIR FILTER
 
-def low_pass_filter(signal, cutoff=CUTOFF, num_taps=NUM_TAPS):
-    signal = np.asarray(signal, dtype=np.complex64)
+def low_pass_filter(
+        signal,
+        cutoff=CUTOFF,
+        num_taps=NUM_TAPS):
+
+    signal = np.asarray(
+        signal,
+        dtype=np.complex64
+    )
 
     coefficients = firwin(
         numtaps=num_taps,
-        cutoff=cutoff
+        cutoff=cutoff,
+        window=("kaiser", 8.0)
     )
 
-    filtered_signal = filtfilt(
+    real_filtered = filtfilt(
         coefficients,
         [1.0],
-        signal
+        signal.real
     )
 
-    return filtered_signal.astype(np.complex64)
+    imag_filtered = filtfilt(
+        coefficients,
+        [1.0],
+        signal.imag
+    )
 
+    filtered_signal = (
+        real_filtered +
+        1j * imag_filtered
+    )
+
+    return filtered_signal.astype(
+        np.complex64
+    )
 
 # AMPLITUDE NORMALIZATION
 def normalize_amplitude(signal):
@@ -52,9 +73,14 @@ def normalize_amplitude(signal):
 
 # DSP PREPROCESSING
 def preprocess_signal(signal):
+
     signal = remove_dc_offset(signal)
+
     signal = low_pass_filter(signal)
-    signal = normalize_amplitude(signal)
+
+    #signal = normalize_amplitude(signal)
+
+    signal = matched_filter(signal)
 
     return signal.astype(np.complex64)
 
