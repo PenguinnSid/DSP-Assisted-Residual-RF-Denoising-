@@ -9,7 +9,7 @@ from matched_filter import matched_filter
 CUTOFF = 0.18
 NUM_TAPS = 101
 
-# DC OFFSET REMOVAL
+
 def remove_dc_offset(signal):
     signal = np.asarray(signal, dtype=np.complex64)
 
@@ -18,52 +18,39 @@ def remove_dc_offset(signal):
     return (signal - dc_offset).astype(np.complex64)
 
 
-# LOW-PASS FIR FILTER
+def matched_filter(signal):
+    """
+    Applies an RRC matched filter.
 
-def low_pass_filter(
-        signal,
-        cutoff=CUTOFF,
-        num_taps=NUM_TAPS):
+    Uses the same pulse shape used by the transmitter.
+    """
 
-    signal = np.asarray(
-        signal,
-        dtype=np.complex64
-    )
+    rrc = np.load("data/rrc_filter.npy")
 
-    coefficients = firwin(
-        numtaps=num_taps,
-        cutoff=cutoff,
-        window=("kaiser", 8.0)
-    )
+    filtered_signal = np.convolve(signal,rrc,mode="same")
 
-    real_filtered = filtfilt(
-        coefficients,
-        [1.0],
-        signal.real
-    )
+    return filtered_signal.astype(np.complex64)
 
-    imag_filtered = filtfilt(
-        coefficients,
-        [1.0],
-        signal.imag
-    )
 
-    filtered_signal = (
-        real_filtered +
-        1j * imag_filtered
-    )
+def low_pass_filter(signal,cutoff=CUTOFF,num_taps=NUM_TAPS):
 
-    return filtered_signal.astype(
-        np.complex64
-    )
+    signal = np.asarray(signal,dtype=np.complex64)
 
-# AMPLITUDE NORMALIZATION
+    coefficients = firwin(numtaps=num_taps,cutoff=cutoff,window=("kaiser", 8.0))
+
+    real_filtered = filtfilt(coefficients,[1.0],signal.real)
+
+    imag_filtered = filtfilt(coefficients,[1.0],signal.imag)
+
+    filtered_signal = (real_filtered +1j * imag_filtered)
+
+    return filtered_signal.astype(np.complex64)
+
+
 def normalize_amplitude(signal):
     signal = np.asarray(signal, dtype=np.complex64)
 
-    rms = np.sqrt(
-        np.mean(np.abs(signal) ** 2)
-    )
+    rms = np.sqrt(np.mean(np.abs(signal) ** 2))
 
     if rms < 1e-12:
         return signal
@@ -78,9 +65,11 @@ def preprocess_signal(signal):
 
     signal = low_pass_filter(signal)
 
-    #signal = normalize_amplitude(signal)
-
     signal = matched_filter(signal)
+
+    signal = normalize_amplitude(signal)
+
+    
 
     return signal.astype(np.complex64)
 
