@@ -136,6 +136,7 @@ def generate_data(signal_length = 1024, sps = 8, rrc_beta = 0.35, rrc_span = 8, 
                 clean_signals = np.empty((samples, waveform_length), dtype=np.complex64)
 
             rrc = rrc_filter(rrc_beta, rrc_span, sps)
+            np.save("data/rrc_filter.npy", rrc)
 
             for i in range(samples):
                 
