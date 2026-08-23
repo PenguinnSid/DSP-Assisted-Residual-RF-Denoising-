@@ -1,5 +1,6 @@
 import numpy as np
 from pathlib import Path
+from scipy.signal import firwin, filtfilt
 
 
 # ============================================================
@@ -12,34 +13,138 @@ DATA_DIR = PROJECT_DIR / "data"
 MODULATIONS = ["bpsk", "qpsk"]
 SPLITS = ["train", "test", "validation"]
 
+SPS = 8  # must match generation config
+
+# same DSP params as dsp.py
+CUTOFF = 0.18
+NUM_TAPS = 101
+
 
 # ============================================================
-# HELPER FUNCTIONS
+# DSP CHAIN (reimplemented locally so this file has no
+# dependency on dsp.py / clean_generator.py imports)
 # ============================================================
 
-def rms(x):
+def rrc_filter(beta=0.35, span=8, sps=8):
     """
-    Calculates the RMS amplitude of a signal.
+    Generates a root raised cosine filter for pulse shaping.
+    Mirrors clean_generator.rrc_filter exactly.
     """
 
-    return np.sqrt(np.mean(np.abs(x) ** 2))
+    N = span * sps
+
+    time = np.arange(-N / 2, N / 2 + 1) / sps
+
+    h = np.zeros_like(time)
+
+    h[time == 0] = 1 - beta + (4 * beta / np.pi)
+
+    t_special = np.abs(time) == (1 / (4 * beta))
+    h[t_special] = (beta / np.sqrt(2)) * (
+        ((1 + 2 / np.pi) * (np.sin(np.pi / (4 * beta)))) +
+        ((1 - 2 / np.pi) * (np.cos(np.pi / (4 * beta))))
+    )
+
+    general_case = ~t_special & (time != 0)
+    h[general_case] = (
+        (np.sin(np.pi * time[general_case] * (1 - beta)) +
+         4 * beta * time[general_case] *
+         np.cos(np.pi * time[general_case] * (1 + beta))) /
+        (np.pi * time[general_case] *
+         (1 - (4 * beta * time[general_case]) ** 2))
+    )
+
+    h /= np.sqrt(np.sum(h ** 2))
+
+    return h
 
 
-def calculate_snr(clean, received):
+def remove_dc_offset(signal):
+    signal = np.asarray(signal, dtype=np.complex64)
+
+    dc_offset = np.mean(signal)
+
+    return (signal - dc_offset).astype(np.complex64)
+
+
+def matched_filter(signal, rrc):
+    filtered_signal = np.convolve(signal, rrc, mode="same")
+
+    return filtered_signal.astype(np.complex64)
+
+
+def low_pass_filter(signal, cutoff=CUTOFF, num_taps=NUM_TAPS):
+    signal = np.asarray(signal, dtype=np.complex64)
+
+    coefficients = firwin(numtaps=num_taps, cutoff=cutoff, window=("kaiser", 8.0))
+
+    real_filtered = filtfilt(coefficients, [1.0], signal.real)
+    imag_filtered = filtfilt(coefficients, [1.0], signal.imag)
+
+    filtered_signal = (real_filtered + 1j * imag_filtered)
+
+    return filtered_signal.astype(np.complex64)
+
+
+def normalize_amplitude(signal):
+    signal = np.asarray(signal, dtype=np.complex64)
+
+    rms = np.sqrt(np.mean(np.abs(signal) ** 2))
+
+    if rms < 1e-12:
+        return signal
+
+    return (signal / rms).astype(np.complex64)
+
+
+def preprocess_signal(signal, rrc):
+    signal = remove_dc_offset(signal)
+    signal = matched_filter(signal, rrc)
+    signal = low_pass_filter(signal)
+    signal = normalize_amplitude(signal)
+
+    return signal.astype(np.complex64)
+
+
+def preprocess_dataset(noisy_signals, sps=8):
+    """
+    Applies DSP preprocessing to an entire dataset.
+    """
+
+    noisy_signals = np.asarray(noisy_signals)
+
+    if noisy_signals.ndim != 2:
+        raise ValueError(f"Expected 2D input, got {noisy_signals.shape}")
+
+    rrc = rrc_filter(beta=0.35, span=8, sps=sps)
+
+    dsp_signals = np.empty(noisy_signals.shape, dtype=np.complex64)
+
+    for i in range(len(noisy_signals)):
+        dsp_signals[i] = preprocess_signal(noisy_signals[i], rrc)
+
+    return dsp_signals
+
+
+# ============================================================
+# METRIC HELPERS
+# ============================================================
+
+def calculate_snr(reference, received):
     """
     Calculates the SNR of a received signal relative
-    to a clean reference signal.
+    to a reference signal.
 
     SNR = 10 * log10(signal_power / noise_power)
 
     The noise is defined as:
 
-        noise = received - clean
+        noise = received - reference
     """
 
-    signal_power = np.mean(np.abs(clean) ** 2)
+    signal_power = np.mean(np.abs(reference) ** 2)
 
-    noise = received - clean
+    noise = received - reference
     noise_power = np.mean(np.abs(noise) ** 2)
 
     if noise_power < 1e-12:
@@ -50,32 +155,57 @@ def calculate_snr(clean, received):
     )
 
 
+def report_metrics(label, reference, candidates):
+    """
+    Prints MSE and per-sample-averaged SNR for each named candidate
+    signal against a shared reference signal.
+
+    candidates: dict of {name: array}, each same shape as reference.
+    """
+
+    print(f"\n{label}")
+
+    n = len(reference)
+
+    for name, signal in candidates.items():
+
+        mse = np.mean(np.abs(reference - signal) ** 2)
+
+        snr_values = np.empty(n, dtype=np.float64)
+
+        for i in range(n):
+            snr_values[i] = calculate_snr(reference[i], signal[i])
+
+        print(
+            f"{name:>12} MSE: {mse:.6f}   |   "
+            f"Avg SNR: {np.mean(snr_values):.4f} dB"
+        )
+
+
 # ============================================================
 # DATASET VERIFICATION
 # ============================================================
 
 def verify_dataset(modulation, split):
 
-    noisy_path = (
-        DATA_DIR
-        / modulation
-        / split
-        / f"{split}_noisy.npy"
-    )
+    paths = {
+        "target": DATA_DIR / modulation / split / f"{split}_target.npy",
+        "faded": DATA_DIR / modulation / split / f"{split}_faded.npy",
+        "faded_target": DATA_DIR / modulation / split / f"{split}_faded_target.npy",
+        "noisy": DATA_DIR / modulation / split / f"{split}_noisy.npy",
+        "dsp": DATA_DIR / modulation / split / f"{split}_dsp.npy",
+    }
 
-    clean_path = (
-        DATA_DIR
-        / modulation
-        / split
-        / f"{split}_clean.npy"
-    )
+    if any(not p.exists() for p in paths.values()):
+        missing = [k for k, p in paths.items() if not p.exists()]
+        print(f"{modulation.upper()} - {split.upper()}: missing {missing}, skipping.")
+        return
 
-    dsp_path = (
-        DATA_DIR
-        / modulation
-        / split
-        / f"{split}_dsp.npy"
-    )
+    target = np.load(paths["target"])
+    faded = np.load(paths["faded"])
+    faded_target = np.load(paths["faded_target"])
+    noisy = np.load(paths["noisy"])
+    dsp = np.load(paths["dsp"])
 
     print("\n")
     print("=" * 70)
@@ -83,339 +213,74 @@ def verify_dataset(modulation, split):
     print("=" * 70)
 
     # ========================================================
-    # CHECK FILES
+    # TEST 1: FADING ONLY (no AWGN)
+    #
+    # Uses the saved `faded` signal directly (no noise was ever
+    # added to it). Reference is `target` (clean, no fading).
+    # Since there's no AWGN here, any error is entirely attributable
+    # to the unequalized fading distortion. Since the current DSP
+    # chain has no equalizer, expect little to no improvement here.
     # ========================================================
 
-    print("\nFILES")
+    fading_only_dsp = preprocess_dataset(faded, sps=SPS)
 
-    for path in [clean_path, noisy_path, dsp_path]:
+    report_metrics(
+        "TEST 1 - FADING ONLY (reference: target)",
+        target,
+        {
+            "Faded": faded,
+            "DSP": fading_only_dsp,
+        }
+    )
 
-        if path.exists():
-            print(f"✓ Found: {path}")
-        else:
-            print(f"✗ Missing: {path}")
+    faded_dsp_mse = np.mean(np.abs(target - fading_only_dsp) ** 2)
+    faded_raw_mse = np.mean(np.abs(target - faded) ** 2)
 
-    if (
-        not clean_path.exists()
-        or not noisy_path.exists()
-        or not dsp_path.exists()
-    ):
-        print("Skipping dataset verification.")
-        return
-
-    # ========================================================
-    # LOAD DATA
-    # ========================================================
-
-    clean = np.load(clean_path)
-    noisy = np.load(noisy_path)
-    dsp = np.load(dsp_path)
-
-    # ========================================================
-    # SHAPE
-    # ========================================================
-
-    print("\nSHAPE")
-
-    print("Clean :", clean.shape)
-    print("Noisy :", noisy.shape)
-    print("DSP   :", dsp.shape)
-
-    if (
-        clean.shape == noisy.shape
-        and noisy.shape == dsp.shape
-    ):
-        print("✓ All signal shapes match")
+    if faded_dsp_mse < faded_raw_mse:
+        print("✓ DSP reduced fading-attributable error")
     else:
-        print("✗ Signal shapes do not match")
+        print("⚠ DSP did not reduce fading-attributable error (expected — no equalizer yet)")
 
     # ========================================================
-    # DTYPE
+    # TEST 2: AWGN REDUCTION (fading held constant on both sides)
+    #
+    # faded_target = fading applied, no AWGN, matched-filtered/
+    # LPF'd/normalized. Both `noisy` and `dsp` came from the same
+    # faded signal, so comparing against faded_target holds the
+    # fading distortion constant on both sides of the residual,
+    # isolating whether AWGN specifically is being reduced.
     # ========================================================
 
-    print("\nDTYPE")
-
-    print("Clean :", clean.dtype)
-    print("Noisy :", noisy.dtype)
-    print("DSP   :", dsp.dtype)
-
-    # ========================================================
-    # NAN / INF CHECK
-    # ========================================================
-
-    print("\nVALIDITY")
-
-    noisy_nan = np.isnan(noisy).any()
-    noisy_inf = np.isinf(noisy).any()
-
-    dsp_nan = np.isnan(dsp).any()
-    dsp_inf = np.isinf(dsp).any()
-
-    print(
-        "Noisy NaN:",
-        noisy_nan,
-        "| Inf:",
-        noisy_inf
+    report_metrics(
+        "TEST 2 - AWGN REDUCTION (reference: faded_target, fading held constant)",
+        faded_target,
+        {
+            "Noisy": noisy,
+            "DSP": dsp,
+        }
     )
 
-    print(
-        "DSP NaN:",
-        dsp_nan,
-        "| Inf:",
-        dsp_inf
-    )
+    dsp_awgn_mse = np.mean(np.abs(faded_target - dsp) ** 2)
+    noisy_awgn_mse = np.mean(np.abs(faded_target - noisy) ** 2)
 
-    if not noisy_nan and not noisy_inf:
-        print("✓ Noisy signals contain no NaN/Inf")
-
-    if not dsp_nan and not dsp_inf:
-        print("✓ DSP signals contain no NaN/Inf")
+    if dsp_awgn_mse < noisy_awgn_mse:
+        print("✓ DSP reduced AWGN-attributable error")
     else:
-        print("✗ DSP contains NaN/Inf")
+        print("⚠ DSP did not reduce AWGN-attributable error")
 
     # ========================================================
-    # DC OFFSET
+    # SANITY: AMPLITUDE NORMALIZATION
     # ========================================================
 
-    print("\nDC OFFSET")
-
-    noisy_mean = np.mean(
-        noisy,
-        axis=1
-    )
-
-    dsp_mean = np.mean(
-        dsp,
-        axis=1
-    )
-
-    noisy_dc = np.abs(noisy_mean)
-    dsp_dc = np.abs(dsp_mean)
-
-    average_noisy_dc = np.mean(noisy_dc)
-    average_dsp_dc = np.mean(dsp_dc)
-
-    print(
-        "Average |mean| before:",
-        average_noisy_dc
-    )
-
-    print(
-        "Average |mean| after :",
-        average_dsp_dc
-    )
-
-    if average_dsp_dc < average_noisy_dc:
-        print("✓ DC component was reduced")
-    else:
-        print("⚠ DC component was not reduced")
-
-    # ========================================================
-    # RMS / AMPLITUDE NORMALIZATION
-    # ========================================================
+    dsp_rms = np.sqrt(np.mean(np.abs(dsp) ** 2, axis=1))
 
     print("\nAMPLITUDE NORMALIZATION")
+    print(f"Average DSP RMS: {np.mean(dsp_rms):.6f}")
 
-    noisy_rms = np.sqrt(
-        np.mean(
-            np.abs(noisy) ** 2,
-            axis=1
-        )
-    )
-
-    dsp_rms = np.sqrt(
-        np.mean(
-            np.abs(dsp) ** 2,
-            axis=1
-        )
-    )
-
-    print(
-        "Average RMS before:",
-        np.mean(noisy_rms)
-    )
-
-    print(
-        "Average RMS after :",
-        np.mean(dsp_rms)
-    )
-
-    print(
-        "Minimum DSP RMS:",
-        np.min(dsp_rms)
-    )
-
-    print(
-        "Maximum DSP RMS:",
-        np.max(dsp_rms)
-    )
-
-    if np.allclose(
-        dsp_rms,
-        1.0,
-        atol=0.05
-    ):
-        print(
-            "✓ All DSP signals are approximately unit RMS"
-        )
+    if np.allclose(dsp_rms, 1.0, atol=0.05):
+        print("✓ All DSP signals are approximately unit RMS")
     else:
-        print(
-            "⚠ Some DSP signals are not approximately unit RMS"
-        )
-
-    # ========================================================
-    # DATA CHANGE
-    # ========================================================
-
-    print("\nDATA CHANGE")
-
-    difference = dsp - noisy
-
-    mean_difference = np.mean(
-        np.abs(difference)
-    )
-
-    print(
-        "Mean |DSP - noisy|:",
-        mean_difference
-    )
-
-    if mean_difference > 1e-6:
-        print(
-            "✓ DSP significantly changed the input data"
-        )
-    else:
-        print(
-            "✗ DSP output is almost identical to input"
-        )
-
-    # ========================================================
-    # MSE AGAINST CLEAN SIGNAL
-    # ========================================================
-
-    print("\nCOMPARISON WITH CLEAN TARGET")
-
-    noisy_mse = np.mean(
-        np.abs(clean - noisy) ** 2
-    )
-
-    dsp_mse = np.mean(
-        np.abs(clean - dsp) ** 2
-    )
-
-    print(
-        "Noisy → Clean MSE:",
-        noisy_mse
-    )
-
-    print(
-        "DSP   → Clean MSE:",
-        dsp_mse
-    )
-
-    if dsp_mse < noisy_mse:
-        print(
-            "✓ DSP reduced MSE relative to noisy signal"
-        )
-    else:
-        print(
-            "⚠ DSP increased MSE relative to noisy signal"
-        )
-
-    # ========================================================
-    # SNR COMPARISON
-    # ========================================================
-
-    print("\nSNR COMPARISON")
-
-    noisy_snr_values = []
-    dsp_snr_values = []
-
-    for i in range(len(clean)):
-
-        noisy_snr = calculate_snr(
-            clean[i],
-            noisy[i]
-        )
-
-        dsp_snr = calculate_snr(
-            clean[i],
-            dsp[i]
-        )
-
-        noisy_snr_values.append(
-            noisy_snr
-        )
-
-        dsp_snr_values.append(
-            dsp_snr
-        )
-
-    noisy_snr_values = np.asarray(
-        noisy_snr_values
-    )
-
-    dsp_snr_values = np.asarray(
-        dsp_snr_values
-    )
-
-    snr_improvement = (
-        dsp_snr_values
-        - noisy_snr_values
-    )
-
-    print(
-        "Average noisy SNR:",
-        np.mean(noisy_snr_values),
-        "dB"
-    )
-
-    print(
-        "Average DSP SNR:",
-        np.mean(dsp_snr_values),
-        "dB"
-    )
-
-    print(
-        "Average SNR improvement:",
-        np.mean(snr_improvement),
-        "dB"
-    )
-
-    if np.mean(snr_improvement) > 0:
-        print(
-            "✓ DSP improved average SNR"
-        )
-    else:
-        print(
-            "⚠ DSP did not improve average SNR"
-        )
-
-    # ========================================================
-    # SUMMARY
-    # ========================================================
-
-    print("\nSUMMARY")
-
-    print(
-        f"Average SNR improvement: "
-        f"{np.mean(snr_improvement):.4f} dB"
-    )
-
-    print(
-        f"MSE before DSP: "
-        f"{noisy_mse:.6f}"
-    )
-
-    print(
-        f"MSE after DSP:  "
-        f"{dsp_mse:.6f}"
-    )
-
-    print(
-        f"Average RMS after DSP: "
-        f"{np.mean(dsp_rms):.6f}"
-    )
+        print("⚠ Some DSP signals are not approximately unit RMS")
 
 
 # ============================================================

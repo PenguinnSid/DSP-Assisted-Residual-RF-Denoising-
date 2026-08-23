@@ -9,35 +9,38 @@ def snr_transform(snr_db):
     snr_linear = 10 ** (snr_db / 10)
     return snr_linear
 
-def rayleigh(signal):
+def rayleigh(signal,sps = 8):
     """ Applies a rayleigh fading channel to the signal
     
     received signal = h * transmitted signal
 
     1/sqrt(2) is used to normalize such that the average symbol power = 1
     the underlying dist. of the real and imaginary components are gaussian
+
+    Assumes len(signal) is a multiple of sps
     """
 
     sigma = 1/np.sqrt(2)
-    
-    fade_coefficient = (
-        np.random.normal(0,sigma,len(signal)) # I copmponent
-        + 1j * np.random.normal(0,sigma,len(signal)) # Q copmponent
+
+    num_symbols = len(signal) // sps
+
+    symbol_fade = (
+    np.random.normal(0,sigma,num_symbols) # I component
+    + 1j * np.random.normal(0,sigma,num_symbols) # Q component
     )
     
-    faded_signal = fade_coefficient * signal
-    
-    return faded_signal
+    fade_coefficient = np.repeat(symbol_fade, sps)
 
-def awgn(signal,snr_db,modulation):
-    """Computes and Adds the required AWGN noise to the required bits
+    faded_signal = fade_coefficient * signal
+
+    return faded_signal, fade_coefficient
+
+def awgn(signal,snr_db):
+    """Computes and Adds the required AWGN noise to the required signal
     
     received signal = transmitted signal + n
 
-    diff sigmas for qpsk and bpsk since qpsk has twice the bits trasmitted per signal
-    BPSK:  1 bit/symbol -> Eb = 1
-    QPSK:  2 bits/symbol -> Eb = 1/2
-    where Eb is the energy per bit
+    noise power is calculated from the actual signal power so that the requested SNR is maintained for both BPSK and QPSK.
     """
 
     snr_linear = snr_transform(snr_db)
@@ -45,27 +48,21 @@ def awgn(signal,snr_db,modulation):
     noise_power = signal_power / snr_linear
     sigma = np.sqrt(noise_power / 2)
 
-    # computes the standard deviation of the guassian dist.
-    if modulation == "BPSK":
-        sigma = np.sqrt(1 / (2 * snr_linear))
-        
-    elif modulation == "QPSK":
-        sigma = np.sqrt(1 / (4 * snr_linear))
-
     awgn_noise = (
-        np.random.normal(0,sigma,len(signal)) # I copmponent
-        + 1j * np.random.normal(0, sigma, len(signal)) # Q copmponent
+        np.random.normal(0,sigma,len(signal)) # I component
+        + 1j * np.random.normal(0,sigma,len(signal)) # Q component
     )
     
     received_signal = signal + awgn_noise
     
     return received_signal,awgn_noise
 
-def noisy_data(clean_signals, modulation):
+def noisy_data(clean_signals,sps = 8):
     """Generates the noise for the given signal and modulation type"""
     
     samples, signal_length = clean_signals.shape
-
+    faded_signals = np.empty((samples, signal_length), dtype=np.complex64)
+    fade_coefficients = np.empty((samples, signal_length), dtype=np.complex64)
     noisy_signals = np.empty((samples, signal_length), dtype=np.complex64)
 
     snr_values = np.empty((samples,), dtype=np.float32)
@@ -79,13 +76,20 @@ def noisy_data(clean_signals, modulation):
         snr_db = snr_pool[i]
         snr_values[i] = snr_db
 
-        faded_signal = rayleigh(clean_signals[i])
-        received_signal,awgn_noise = awgn(faded_signal, snr_db, modulation)
+
+        faded_signal, fade_coefficient = rayleigh(clean_signals[i], sps)
+        faded_signals[i] = faded_signal
+        fade_coefficients[i] = fade_coefficient
+
+        #received_signal,awgn_noise = awgn(clean_signals[i], snr_db)
+
+        received_signal,awgn_noise = awgn(faded_signal, snr_db)
         noisy_signals[i] = received_signal
 
-    return noisy_signals, snr_values
 
-def generate_noise(split_config = {"train": 10000,"test": 3000,"validation": 2000 }):
+    return noisy_signals, faded_signals, fade_coefficients, snr_values
+
+def generate_noise(split_config = {"train": 10000,"test": 3000,"validation": 2000 },sps = 8):
     """
     generates the noise for the clean signals and saves them
 
@@ -101,17 +105,19 @@ def generate_noise(split_config = {"train": 10000,"test": 3000,"validation": 200
             clean_path = os.path.join(save_dir, f"{split}_clean.npy")
             clean_signals = np.load(clean_path)
 
-            noisy_signals = np.empty(clean_signals.shape, dtype=np.complex64)
-            snr_values = np.empty(samples,dtype=np.float32)
-
-            noisy_signals, snr_values = noisy_data(clean_signals, modulation)
+            noisy_signals, faded_signals, fade_coefficients, snr_values = noisy_data(clean_signals, sps)
 
             noisy_path = os.path.join(save_dir,f"{split}_noisy.npy")
-
+            faded_path = os.path.join(save_dir,f"{split}_faded.npy")
+            h_path = os.path.join(save_dir,f"{split}_h.npy")
             snr_path = os.path.join(save_dir,f"{split}_snr.npy")
 
             np.save(noisy_path, noisy_signals)
+            np.save(faded_path, faded_signals)
+            np.save(h_path, fade_coefficients)
             np.save(snr_path, snr_values)
 
             print(f"Saved noisy signals: {noisy_path}")
+            print(f"Saved faded signals: {faded_path}")
+            print(f"Saved fade coefficients: {h_path}")
             print(f"Saved SNR values: {snr_path}")
