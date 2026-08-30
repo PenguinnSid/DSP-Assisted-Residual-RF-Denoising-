@@ -22,14 +22,12 @@ def rayleigh(signal,sps = 8):
 
     sigma = 1/np.sqrt(2)
 
-    num_symbols = len(signal) // sps
-
-    symbol_fade = (
-    np.random.normal(0,sigma,num_symbols) # I component
-    + 1j * np.random.normal(0,sigma,num_symbols) # Q component
+    h = (
+    np.random.normal(0,sigma) # I component
+    + 1j * np.random.normal(0,sigma) # Q component
     )
     
-    fade_coefficient = np.repeat(symbol_fade, sps)
+    fade_coefficient =np.full(len(signal), h, dtype=np.complex64)
 
     faded_signal = fade_coefficient * signal
 
