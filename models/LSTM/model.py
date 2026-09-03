@@ -11,9 +11,10 @@ class LSTM(nn.Module):
             hidden_size= hidden_size,
             num_layers= num_layers,
             batch_first= True,
-            dropout=dropout_rate
+            dropout=dropout_rate if num_layers > 1 else 0
         )
 
+        self.dropout = nn.Dropout(dropout_rate)
         self.fc = nn.Linear(hidden_size,output_size)
 
     # forward pass
@@ -23,7 +24,7 @@ class LSTM(nn.Module):
         hh is last hidden state
         cn is the last cell state
         """
-        out,(hh,cn) = self.lstm(x)
+        out, (hh,cn) = self.lstm(x)
         out = out[:,-1,:] # extract the last timestep
         out = self.dropout(out) # dropout
         out = self.fc(out) # linear prediction
