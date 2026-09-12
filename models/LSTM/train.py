@@ -78,6 +78,8 @@ loss = nn.MSELoss()
         
 """ Training Loop """
 
+best_val_loss = float("inf")
+
 for epoch in range(epochs):
 
     # training
@@ -119,4 +121,8 @@ for epoch in range(epochs):
 
     print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
 
-torch.save(model.state_dict(), "models/LSTM/checkpoints/lstm_v1.pt")
+    if(val_loss< best_val_loss):
+        best_val_loss = val_loss
+        torch.save(model.state_dict(), "models/LSTM/checkpoints/lstm_v1_best.pt")
+
+torch.save(model.state_dict(), "models/LSTM/checkpoints/lstm_v1_full.pt")
