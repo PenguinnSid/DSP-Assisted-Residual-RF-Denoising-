@@ -9,7 +9,7 @@ from torch.utils.data import TensorDataset, DataLoader
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from model import LSTM
-from load_rayleigh_data import load_split
+from load_awgn_data import load_split
 
 # gpu 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

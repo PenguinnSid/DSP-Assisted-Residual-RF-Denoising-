@@ -25,7 +25,6 @@ class LSTM(nn.Module):
         cn is the last cell state
         """
         out, (hh,cn) = self.lstm(x)
-        out = out[:,-1,:] # extract the last timestep
         out = self.dropout(out) # dropout
         out = self.fc(out) # linear prediction
                   
