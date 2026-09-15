@@ -23,9 +23,7 @@ Implementation of a DSP pipeline on generated RF Signal Data and removal of Resi
 - Amplitude Normalization
 
 
-
 ## Repository Structure
-
 
 ```text
 DSP-Assisted-Residual-RF-Denoising-/
@@ -42,13 +40,40 @@ DSP-Assisted-Residual-RF-Denoising-/
 │   ├── dsp.py
 │   └── experimental_notebooks/
 │
+├── models/
+│   ├── load_data.py
+│   ├── AutoEncoder/
+│   ├── CNN/
+│   └── LSTM/
+│
 ├── tests/
-│   └── dsp_test.py/
+│   ├── model_evaluation.py
+│   └── dsp_test.py
 │ 
 ├── requirements.txt
 ├── README.md
 └── .gitignore
 ```
+
+### Model Folder Structure
+
+```text
+models/
+├── data_loader.py  
+├── autoencoder/
+│   ├── autoencoder_model.py
+│   ├── train_autoencoder.py
+│   └── checkpoints/   
+├── cnn/
+│   ├── cnn_model.py        
+│   ├── train_cnn.py        
+│   └── checkpoints/     
+└── lstm/
+    ├── lstm_model.py      
+    ├── train_lstm.py      
+    └── checkpoints/        
+```
+
 
 ## Data Structure
 
@@ -66,6 +91,7 @@ Each of these folders contains 8 '.npy' files ->
 - {split}_target.npy - Clean signals passed through Matched filter, Low Pass Filter and normalized
 
 All the data is stored in '.npy' files of the 'complex64' type, respresenting the I/Q channels.
+
 
 ## Running
 
@@ -96,7 +122,7 @@ Install the dependencies
 pip install -r requirements.txt
 ```
 
-## Data Generation and Tests
+### Data Generation and Tests
 
 To generate the data, save it and apply the simulated noise and DSP
 
