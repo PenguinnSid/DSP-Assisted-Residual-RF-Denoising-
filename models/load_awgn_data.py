@@ -21,34 +21,36 @@ def load_split(split, sps=8, seed=42, data_root="data"):
     Unlike the coefficient predictor, this is a sequence-to-sequence task:
     both X and y have shape (N, seq_len, 2), not (N, 2).
     """
-
     modulations = ["bpsk", "qpsk"]
 
-    noisy_list = []
-    target_list = []
+    noisy_list, target_list, snr_list, mod_label_list = [], [], [], []
 
     for modulation in modulations:
         base = f"{data_root}/{modulation}/{split}"
 
         noisy = np.load(f"{base}/{split}_noisy.npy")
         faded_target = np.load(f"{base}/{split}_faded_target.npy")
+        snr = np.load(f"{base}/{split}_snr.npy")
 
         noisy_list.append(noisy)
         target_list.append(faded_target)
+        snr_list.append(snr)
+        mod_label_list.append(np.full(len(noisy), modulation))
 
     noisy_all = np.concatenate(noisy_list, axis=0)
     target_all = np.concatenate(target_list, axis=0)
+    snr_all = np.concatenate(snr_list, axis=0)
+    mod_labels_all = np.concatenate(mod_label_list, axis=0)
 
-    """ Shuffling dataset with a consistent random seed to maintain relative association between diff files """
     rng = np.random.default_rng(seed)
     perm = rng.permutation(len(noisy_all))
 
     noisy_all = noisy_all[perm]
     target_all = target_all[perm]
+    snr_all = snr_all[perm]             
+    mod_labels_all = mod_labels_all[perm]  
 
-    """ Stacking inputs and outputs """
     X = np.stack([noisy_all.real, noisy_all.imag], axis=-1).astype(np.float32)
-
     y = np.stack([target_all.real, target_all.imag], axis=-1).astype(np.float32)
 
-    return X, y
+    return X, y, snr_all, mod_labels_all

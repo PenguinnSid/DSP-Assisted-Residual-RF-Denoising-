@@ -29,8 +29,8 @@ epochs = 30
 
 """ data splits """
 
-X_train, y_train = load_split("train")
-X_val, y_val = load_split("validation")
+X_train, y_train, _, _ = load_split("train")
+X_val, y_val, _, _ = load_split("validation")
 
 train_loader = DataLoader(
     TensorDataset(torch.tensor(X_train), torch.tensor(y_train)),
