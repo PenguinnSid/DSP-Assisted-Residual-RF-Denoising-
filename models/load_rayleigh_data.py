@@ -1,30 +1,53 @@
 import numpy as np
 
 
-def load_split(split, sps=8, seed=42, data_root="data", downsample_factor=8):
+def extract_features(noisy_signal):
     """
-    Loads the noisy signals and channel coefficients.
+    Extracts hand-engineered statistical features from a complex noisy
+    signal, intended to carry information about the fade coefficient h
+    without requiring a full sequence model.
 
-    -> input = noisy signals (downsampled)
-    -> output/labels = channel coefficients
+    |h| is recoverable from received signal power (RMS).
+    Phase of h is partially recoverable from the correlation structure
+    between the real and imaginary components (most directly for BPSK,
+    where both parts are scaled copies of the same real waveform).
+    """
 
-    Combines the BPSK and QPSK splits into one dataset to avoid creating 2 models
+    real = noisy_signal.real
+    imag = noisy_signal.imag
 
-    Stacks the real and imaginary parts of the complex signals into 2 channels for both input and output
+    features = np.stack([
+        np.mean(np.abs(noisy_signal) ** 2, axis=1),     # RMS power -> proxy for |h|^2
+        np.mean(real, axis=1),
+        np.mean(imag, axis=1),
+        np.std(real, axis=1),
+        np.std(imag, axis=1),
+        np.mean(real * imag, axis=1),                    # cross-correlation -> phase info
+        np.mean(real ** 2, axis=1) - np.mean(imag ** 2, axis=1),  # power difference -> phase info
+        np.arctan2(np.mean(imag, axis=1), np.mean(real, axis=1)),
+    ], axis=1)
 
-    Shuffles the dataset with a fixed and consistent random seed to maintain the relative association between the different files
+    return features.astype(np.float32)
 
-    downsample_factor: reduces the 8192-length sequence by averaging over
-    non-overlapping blocks of this size (default 8, matching sps — since h
-    is constant across the whole sequence, this preserves the signal needed
-    to estimate h while making the sequence far more tractable for an LSTM,
-    which otherwise struggles with vanishing gradients over 8192 timesteps)
+
+def load_split(split, seed=42, data_root="data"):
+    """
+    Loads noisy signals and channel coefficients, converts noisy signals
+    into engineered feature vectors (rather than raw sequences), for use
+    with a classical regression model (RandomForestRegressor etc).
+
+    -> input  = engineered features from the noisy signal
+    -> output = h.real, h.imag
+
+    Combines BPSK and QPSK into one dataset. Shuffles with a fixed seed,
+    keeping X/y aligned via a single permutation.
     """
 
     modulations = ["bpsk", "qpsk"]
 
     noisy_list = []
     h_list = []
+    mod_label_list = []
 
     for modulation in modulations:
         base = f"{data_root}/{modulation}/{split}"
@@ -34,26 +57,20 @@ def load_split(split, sps=8, seed=42, data_root="data", downsample_factor=8):
 
         noisy_list.append(noisy)
         h_list.append(h_full[:, 0])
+        mod_label_list.append(np.full(len(noisy), modulation))
 
     noisy_all = np.concatenate(noisy_list, axis=0)
     h_all = np.concatenate(h_list, axis=0)
+    mod_labels_all = np.concatenate(mod_label_list, axis=0)
 
     rng = np.random.default_rng(seed)
     perm = rng.permutation(len(noisy_all))
 
     noisy_all = noisy_all[perm]
     h_all = h_all[perm]
+    mod_labels_all = mod_labels_all[perm]
 
-    # --- downsampling: average-pool non-overlapping blocks ---
-    if downsample_factor > 1:
-        n_samples, seq_len = noisy_all.shape
-        new_len = seq_len // downsample_factor
-
-        noisy_all = noisy_all[:, :new_len * downsample_factor]           # trim to a multiple
-        noisy_all = noisy_all.reshape(n_samples, new_len, downsample_factor)
-        noisy_all = noisy_all.mean(axis=2)                                # average-pool each block
-
-    X = np.stack([noisy_all.real, noisy_all.imag], axis=-1).astype(np.float32)
+    X = extract_features(noisy_all)
     y = np.stack([h_all.real, h_all.imag], axis=-1).astype(np.float32)
 
-    return X, y
+    return X, y, mod_labels_all
