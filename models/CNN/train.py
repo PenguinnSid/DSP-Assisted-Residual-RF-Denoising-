@@ -22,7 +22,7 @@ def main():
     epochs = 30
 
     # The project stores generated splits under code/data/ (see code/main.py).
-    data_root = MODELS_DIR.parent / "code" / "data"
+    data_root = MODELS_DIR.parent / "data"
     X_train, y_train, _, _ = load_split("train", data_root=str(data_root))
     X_val, y_val, _, _ = load_split("validation", data_root=str(data_root))
 

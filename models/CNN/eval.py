@@ -9,12 +9,12 @@ sys.path.insert(0, str(MODELS_DIR))
 
 from evaluate import evaluate_denoiser, to_complex
 from load_awgn_data import load_split
-from CNN.model import CNN
+from model import CNN
 
 
 def main():
     # Keep evaluation aligned with the data-generation script's code/data/ output.
-    data_root = MODELS_DIR.parent / "code" / "data"
+    data_root = MODELS_DIR.parent / "data"
     X_test, y_test, snr_values, modulation_labels = load_split(
         "test", data_root=str(data_root)
     )
