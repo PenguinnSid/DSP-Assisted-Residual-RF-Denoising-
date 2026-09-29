@@ -28,8 +28,18 @@ def load_split(split, sps=8, seed=42, data_root="data"):
     for modulation in modulations:
         base = f"{data_root}/{modulation}/{split}"
 
+        # Load the noisy (fading+AWGN) input
         noisy = np.load(f"{base}/{split}_noisy.npy")
-        faded_target = np.load(f"{base}/{split}_faded_target.npy")
+        # Load the target (faded signal without AWGN). The original code expected
+        # a file named `{split}_faded_target.npy` which does not exist in the
+        # repository. The available dataset provides `{split}_faded.npy` (faded
+        # signal) and `{split}_clean.npy` (clean signal). For the denoising task
+        # we want the faded signal as the label, so we fall back to that filename.
+        try:
+            faded_target = np.load(f"{base}/{split}_faded_target.npy")
+        except FileNotFoundError:
+            # Use the faded version if the *_faded_target.npy file is missing
+            faded_target = np.load(f"{base}/{split}_faded.npy")
         snr = np.load(f"{base}/{split}_snr.npy")
 
         noisy_list.append(noisy)
