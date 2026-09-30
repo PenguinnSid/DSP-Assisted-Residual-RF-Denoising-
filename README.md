@@ -38,40 +38,57 @@ DSP-Assisted-Residual-RF-Denoising-/
 │   ├── clean_generator.py
 │   ├── noise.py
 │   ├── dsp.py
+│   ├── plot_dsp.py
 │   └── experimental_notebooks/
 │
 ├── models/
-│   ├── load_data.py
+│   ├── evaluate.py
+│   ├── load_awgn_data.py
+│   ├── load_rayleigh_data.py
+│   ├── evaluation_plots/
 │   ├── AutoEncoder/
 │   ├── CNN/
-│   └── LSTM/
+│   ├── LSTM/
+│   └── ensemble/
+│       ├── ensemble.py
+│       ├── eval.py
+│       └── evaluation_plots/
 │
 ├── tests/
-│   ├── model_evaluation.py
-│   └── dsp_test.py
+│   ├── dsp_test.py
+│   └── gpu_test.py
 │ 
 ├── requirements.txt
 ├── README.md
-└── .gitignore
+└── .gitignore   
 ```
 
 ### Model Folder Structure
 
 ```text
-models/
-├── data_loader.py  
+models/  
 ├── autoencoder/
-│   ├── autoencoder_model.py
-│   ├── train_autoencoder.py
-│   └── checkpoints/   
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py    
 ├── cnn/
-│   ├── cnn_model.py        
-│   ├── train_cnn.py        
-│   └── checkpoints/     
-└── lstm/
-    ├── lstm_model.py      
-    ├── train_lstm.py      
-    └── checkpoints/        
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py        
+├── lstm/
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py   
+├── ensemble/
+│   ├── ensemble.py
+│   └── eval.py
+├── evaluation_plots/
+├── evaluate.py   
+├── load_awgn_data.py
+└── load_rayleigh_data.py
 ```
 
 
@@ -130,8 +147,14 @@ To generate the data, save it and apply the simulated noise and DSP
 python main.py 
 ```
 
-To test the DSP pipeline and check the MSE and SNR
+### Models
 
+Training
 ```bash
-python main.py 
+python models/{model_architecture}/train.py 
+```
+
+Evaluation 
+```bash
+python models/{model_architecture}/eval.py
 ```
