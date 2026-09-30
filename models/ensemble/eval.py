@@ -1,5 +1,6 @@
 """
-General evaluation of the ensemble vs. its individual members and the raw noisy input.
+Full evaluation of the AutoEncoder + CNN + LSTM ensemble vs. its individual
+members and the raw noisy input.
 
 Run from anywhere:
     python models/ensemble/eval.py
@@ -7,11 +8,12 @@ Run from anywhere:
     python models/ensemble/eval.py --data-root path/to/data --split test
 
 What you get:
-  1. Overall table: MSE, output SNR and SNR gain for Raw / AutoEncoder / CNN / LSTM / each ensemble mode
-  2. Table of mean SNR gain per input-SNR level
-  3. The standard evaluate_denoiser() report + boxplot PNG for the primary ensemble mode
+  1. Learned ensemble weights (if "weighted" is among --modes), fit on validation
+  2. Overall table: MSE, output SNR and SNR gain for Raw / AutoEncoder / CNN / LSTM / each ensemble mode
+  3. Table of mean SNR gain per input-SNR level
+  4. The standard evaluate_denoiser() report + boxplot PNG for the primary ensemble mode
      (saved as models/evaluation_plots/ensemble_<mode>_snr_stratified.png)
-  4. models/evaluation_plots/ensemble_comparison.png and ensemble_summary.csv
+  5. models/evaluation_plots/ensemble_comparison.png and ensemble_summary.csv
 
 Individual members are NOT passed to evaluate_denoiser here, so your existing
 autoencoder / cnn / lstm plots in evaluation_plots/ are left untouched.
@@ -53,8 +55,12 @@ def evaluate_ensemble(ens, split="test", data_root=DEFAULT_DATA_ROOT,
     if "weighted" in modes:
         Xv, yv, _, _ = load_split("validation", data_root=str(data_root))
         weights, val_mse = ens.fit_weights(Xv, yv, batch_size)
-        print("Validation MSE per member :", {k: round(v, 5) for k, v in val_mse.items()})
-        print("Ensemble weights (1/MSE)  :", {k: round(v, 3) for k, v in weights.items()})
+        print("\n" + "=" * 72)
+        print("LEARNED ENSEMBLE WEIGHTS (fit on validation split)")
+        print("=" * 72)
+        print(f"{'Model':<15}{'Weight':>10}{'Val MSE':>14}")
+        for name in ens.names:
+            print(f"{name:<15}{weights[name]:>10.4f}{val_mse[name]:>14.6f}")
 
     member_preds = ens.predict_members(X, batch_size)
 
