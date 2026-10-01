@@ -220,3 +220,4 @@ __marimo__/
 .ipynb_checkpoints/
 
 data/
+models/*/checkpoints/

@@ -23,9 +23,7 @@ Implementation of a DSP pipeline on generated RF Signal Data and removal of Resi
 - Amplitude Normalization
 
 
-
 ## Repository Structure
-
 
 ```text
 DSP-Assisted-Residual-RF-Denoising-/
@@ -40,15 +38,59 @@ DSP-Assisted-Residual-RF-Denoising-/
 │   ├── clean_generator.py
 │   ├── noise.py
 │   ├── dsp.py
+│   ├── plot_dsp.py
 │   └── experimental_notebooks/
 │
+├── models/
+│   ├── evaluate.py
+│   ├── load_awgn_data.py
+│   ├── load_rayleigh_data.py
+│   ├── evaluation_plots/
+│   ├── AutoEncoder/
+│   ├── CNN/
+│   ├── LSTM/
+│   └── ensemble/
+│       ├── ensemble.py
+│       ├── eval.py
+│       └── evaluation_plots/
+│
 ├── tests/
-│   └── dsp_test.py/
+│   ├── dsp_test.py
+│   └── gpu_test.py
 │ 
 ├── requirements.txt
 ├── README.md
-└── .gitignore
+└── .gitignore   
 ```
+
+### Model Folder Structure
+
+```text
+models/  
+├── autoencoder/
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py    
+├── cnn/
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py        
+├── lstm/
+│   ├── checkpoints/
+│   ├── model.py
+│   ├── train.py
+│   └── eval.py   
+├── ensemble/
+│   ├── ensemble.py
+│   └── eval.py
+├── evaluation_plots/
+├── evaluate.py   
+├── load_awgn_data.py
+└── load_rayleigh_data.py
+```
+
 
 ## Data Structure
 
@@ -66,6 +108,7 @@ Each of these folders contains 8 '.npy' files ->
 - {split}_target.npy - Clean signals passed through Matched filter, Low Pass Filter and normalized
 
 All the data is stored in '.npy' files of the 'complex64' type, respresenting the I/Q channels.
+
 
 ## Running
 
@@ -96,7 +139,7 @@ Install the dependencies
 pip install -r requirements.txt
 ```
 
-## Data Generation and Tests
+### Data Generation and Tests
 
 To generate the data, save it and apply the simulated noise and DSP
 
@@ -104,8 +147,14 @@ To generate the data, save it and apply the simulated noise and DSP
 python main.py 
 ```
 
-To test the DSP pipeline and check the MSE and SNR
+### Models
 
+Training
 ```bash
-python main.py 
+python models/{model_architecture}/train.py 
+```
+
+Evaluation 
+```bash
+python models/{model_architecture}/eval.py
 ```
