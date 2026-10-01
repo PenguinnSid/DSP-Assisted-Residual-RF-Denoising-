@@ -13,7 +13,7 @@ from AutoEncoder.model import Autoencoder
 
 
 def main():
-    data_root = MODELS_DIR.parent / "code" / "data"
+    data_root = MODELS_DIR.parent / "data"
     X_test, y_test, snr_values, modulation_labels = load_split("test", data_root=str(data_root))
     checkpoint = Path(__file__).resolve().parent / "checkpoints" / "ae_v2_best.pt"
     if not checkpoint.exists():

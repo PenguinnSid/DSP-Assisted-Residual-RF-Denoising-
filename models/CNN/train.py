@@ -14,7 +14,7 @@ from training_utils import fit_model, make_loaders
 
 
 def main():
-    data_root = MODELS_DIR.parent / "code" / "data"
+    data_root = MODELS_DIR.parent / "data"
     train_loader, val_loader = make_loaders(load_split, data_root)
     model = CNN()
     fit_model(
