@@ -9,39 +9,28 @@ sys.path.insert(0, str(MODELS_DIR))
 
 from evaluate import evaluate_denoiser, to_complex
 from load_awgn_data import load_split
-from model import CNN
+from CNN.model import CNN
 
 
 def main():
-    # Keep evaluation aligned with the data-generation script's code/data/ output.
-    data_root = MODELS_DIR.parent / "data"
-    X_test, y_test, snr_values, modulation_labels = load_split(
-        "test", data_root=str(data_root)
-    )
-    checkpoint_path = Path(__file__).resolve().parent / "checkpoints" / "cnn_v1_best.pt"
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}. Run train.py first.")
+    data_root = MODELS_DIR.parent / "code" / "data"
+    X_test, y_test, snr_values, modulation_labels = load_split("test", data_root=str(data_root))
+    checkpoint = Path(__file__).resolve().parent / "checkpoints" / "cnn_v2_best.pt"
+    if not checkpoint.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint}. Run train.py first.")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = CNN().to(device)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    model.load_state_dict(torch.load(checkpoint, map_location=device))
     model.eval()
-
-    batch_size = 64
     predictions = []
-    with torch.no_grad():
-        for start in range(0, len(X_test), batch_size):
-            batch = torch.from_numpy(X_test[start:start + batch_size]).to(device)
+    with torch.inference_mode():
+        for start in range(0, len(X_test), 64):
+            batch = torch.from_numpy(X_test[start:start + 64]).to(device)
             predictions.append(model(batch).cpu().numpy())
-
-    y_pred = np.concatenate(predictions, axis=0)
     return evaluate_denoiser(
-        model_name="CNN",
-        y_pred_complex=to_complex(y_pred),
-        X_test_complex=to_complex(X_test),
-        target_complex=to_complex(y_test),
-        snr_values=snr_values,
-        modulation_labels=modulation_labels,
+        "CNN", to_complex(np.concatenate(predictions, axis=0)),
+        to_complex(X_test), to_complex(y_test), snr_values, modulation_labels,
     )
 
 
